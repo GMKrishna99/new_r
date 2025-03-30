@@ -1,4 +1,5 @@
 import React, { useState, useRef } from "react";
+import { PDFDocument, rgb } from 'pdf-lib';
 
 const DocumentSignatureApp = () => {
   const [document, setDocument] = useState(null);
@@ -156,26 +157,36 @@ const DocumentSignatureApp = () => {
     setCurrentSignature(null);
   };
 
-  // Save document with signatures
-  const saveDocument = () => {
-    if (!document) return;
-
-    const updatedDocument = { ...document, signatures };
-
-    // Check if document already exists in saved documents
-    const exists = savedDocuments.some((doc) => doc.id === updatedDocument.id);
-
-    if (exists) {
-      setSavedDocuments(
-        savedDocuments.map((doc) =>
-          doc.id === updatedDocument.id ? updatedDocument : doc
-        )
-      );
-    } else {
-      setSavedDocuments([...savedDocuments, updatedDocument]);
-    }
-
-    alert("Document saved successfully!");
+  const saveDocument = async () => {
+    if (!document || !document.content.startsWith("data:application/pdf")) return;
+  
+    const existingPdfBytes = await fetch(document.content).then(res => res.arrayBuffer());
+    const pdfDoc = await PDFDocument.load(existingPdfBytes);
+  
+    const form = pdfDoc.getForm();
+  
+    signatures.forEach(signature => {
+      const signatureField = form.createTextField(`Signature-${signature.id}`);
+      signatureField.setText('Signed Here');  // Placeholder text
+      signatureField.addToPage(pdfDoc.getPages()[0], {
+        x: signature.x,
+        y: signature.y,
+        width: signature.width,
+        height: signature.height,
+        backgroundColor: rgb(1, 1, 1), // White background
+      });
+    });
+  
+    form.flatten(); // Make it editable
+  
+    const pdfBytes = await pdfDoc.save();
+    const pdfBlob = new Blob([pdfBytes], { type: "application/pdf" });
+    const url = URL.createObjectURL(pdfBlob);
+    
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "SignedDocument.pdf";
+    link.click();
   };
 
   // Load a saved document
