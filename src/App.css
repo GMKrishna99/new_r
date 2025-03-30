@@ -1,267 +1,512 @@
+@font-face {
+    font-family: 'AutoGrafPersonal';
+    src: url('./fonts/Motterdam-K74zp.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+}
+
+/* Base Styles */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    line-height: 1.6;
+    background-color: #f5f7fa;
+    color: #333;
+}
+
 .app {
     display: flex;
     flex-direction: column;
-    height: 100vh;
+    min-height: 100vh;
 }
 
-header {
-    background: #2c3e50;
+/* Header Styles */
+.app-header {
+    background-color: #2c3e50;
     color: white;
-    padding: 1rem;
-    text-align: center;
-}
-
-.main-content {
-    display: flex;
-    flex: 1;
-    overflow: hidden;
-}
-
-.document-container {
-    flex: 3;
-    padding: 20px;
-    overflow: auto;
-    border-right: 1px solid #ddd;
-    position: relative;
-}
-
-.tools-panel {
-    flex: 1;
-    padding: 20px;
-    background: #f5f5f5;
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-}
-
-.signature-pad-container {
-    border: 1px solid #ddd;
-    background: white;
-    padding: 10px;
-}
-
-.signature-canvas {
-    width: 100%;
-    height: 200px;
-    background: white;
-    border: 1px dashed #aaa;
-}
-
-.signature-actions {
-    margin-top: 10px;
-    display: flex;
-    gap: 10px;
-}
-
-.tool-btn {
-    padding: 8px 16px;
-    background: #3498db;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-}
-
-.tool-btn:hover {
-    background: #2980b9;
-}
-
-.signature-field {
-    position: absolute;
-    border: 1px dashed blue;
-    cursor: move;
-    background: rgba(173, 216, 230, 0.3);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-}
-
-.signature-field.active {
-    border: 2px solid #e74c3c;
-    background: rgba(173, 216, 230, 0.5);
-}
-
-.signature-img {
-    max-width: 100%;
-    max-height: 100%;
-    object-fit: contain;
-}
-
-.page-controls {
+    padding: 1rem 2rem;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-top: auto;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
 }
 
-.upload-prompt {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 100%;
-    color: #7f8c8d;
+.app-header h1 {
+    font-size: 1.5rem;
+    font-weight: 500;
 }
 
-
-.app {
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-    font-family: Arial, sans-serif;
+.file-upload-container {
+    position: relative;
 }
 
-header {
-    background: #2c3e50;
+.file-upload-label {
+    display: inline-block;
+    cursor: pointer;
+}
+
+.file-upload-input {
+    position: absolute;
+    left: 0;
+    top: 0;
+    opacity: 0;
+    width: 0.1px;
+    height: 0.1px;
+}
+
+.file-upload-button {
+    display: inline-block;
+    padding: 0.5rem 1rem;
+    background-color: #3498db;
     color: white;
-    padding: 1rem;
-    text-align: center;
+    border-radius: 4px;
+    transition: background-color 0.3s;
 }
 
+.file-upload-button:hover {
+    background-color: #2980b9;
+}
+
+/* Main Content Layout */
 .main-content {
     display: flex;
     flex: 1;
-    overflow: hidden;
+    padding: 1rem;
+    gap: 1.5rem;
 }
 
 .document-container {
-    flex: 3;
-    padding: 20px;
-    overflow: auto;
-    border-right: 1px solid #ddd;
-    position: relative;
-    display: flex;
-    justify-content: center;
-    background: #f5f5f5;
-}
-
-.tools-panel {
     flex: 1;
-    max-width: 300px;
-    padding: 20px;
-    background: #ecf0f1;
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
-}
-
-.signature-pad-container {
-    border: 1px solid #ddd;
-    background: white;
-    padding: 15px;
-    border-radius: 4px;
-}
-
-.signature-canvas {
-    width: 100%;
-    height: 200px;
-    background: white;
-    border: 1px dashed #aaa;
-    border-radius: 4px;
-    touch-action: none;
-}
-
-.signature-actions {
-    margin-top: 10px;
-    display: flex;
-    gap: 10px;
-}
-
-.tool-btn {
-    padding: 10px 15px;
-    background: #3498db;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 14px;
-    transition: background 0.2s;
-}
-
-.tool-btn:hover {
-    background: #2980b9;
-}
-
-.tool-btn.primary {
-    background: #2ecc71;
-}
-
-.tool-btn.primary:hover {
-    background: #27ae60;
-}
-
-.tool-btn.danger {
-    background: #e74c3c;
-}
-
-.tool-btn.danger:hover {
-    background: #c0392b;
-}
-
-.tool-btn:disabled {
-    background: #95a5a6;
-    cursor: not-allowed;
-}
-
-.download-btn {
-    background: #9b59b6;
-    margin-top: auto;
-}
-
-.download-btn:hover {
-    background: #8e44ad;
-}
-
-.signature-field {
-    position: absolute;
-    border: 1px dashed #3498db;
-    cursor: move;
-    background: rgba(173, 216, 230, 0.3);
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    overflow: auto;
     display: flex;
     justify-content: center;
     align-items: center;
+    min-height: 80vh;
+    position: relative;
+}
+
+.tools-panel {
+    width: 350px;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+/* Document Viewer Styles */
+.upload-prompt {
+    text-align: center;
+    color: #7f8c8d;
+}
+
+.upload-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+}
+
+.loading-pdf,
+.error-pdf {
+    padding: 2rem;
+    text-align: center;
+}
+
+.error-pdf {
+    color: #e74c3c;
+}
+
+/* Signature Field Styles */
+.signature-field {
+    position: absolute;
+    border: 2px dashed #3498db;
+    cursor: move;
+    background-color: rgba(52, 152, 219, 0.1);
     z-index: 10;
 }
 
 .signature-field.active {
     border: 2px solid #e74c3c;
-    background: rgba(173, 216, 230, 0.5);
+    background-color: rgba(231, 76, 60, 0.1);
 }
 
 .signature-img {
-    max-width: 100%;
-    max-height: 100%;
+    width: 100%;
+    height: 100%;
     object-fit: contain;
-    pointer-events: none;
 }
 
-.upload-prompt {
+/* Tools Panel Styles */
+.section-title {
+    font-size: 1.1rem;
+    margin-bottom: 0.5rem;
+    color: #2c3e50;
+    font-weight: 500;
+}
+
+.signature-type-options {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.signature-type-option {
+    flex: 1;
+    cursor: pointer;
+}
+
+.option-input {
+    position: absolute;
+    opacity: 0;
+}
+
+.option-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0.75rem;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    transition: all 0.3s;
+}
+
+.option-icon {
+    font-size: 1.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.signature-type-option.active .option-content {
+    border-color: #3498db;
+    background-color: rgba(52, 152, 219, 0.1);
+}
+
+/* Button Styles */
+.tool-btn {
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 4px;
+    background-color: #ecf0f1;
+    color: #2c3e50;
+    cursor: pointer;
+    transition: all 0.3s;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+.tool-btn:hover {
+    background-color: #d6dbdf;
+}
+
+.add-field-btn {
+    background-color: #2ecc71;
+    color: white;
+}
+
+.add-field-btn:hover {
+    background-color: #27ae60;
+}
+
+.remove-field-btn {
+    background-color: #e74c3c;
+    color: white;
+}
+
+.remove-field-btn:hover {
+    background-color: #c0392b;
+}
+
+.save-btn {
+    background-color: #3498db;
+    color: white;
+}
+
+.save-btn:hover {
+    background-color: #2980b9;
+}
+
+.download-btn {
+    background-color: #9b59b6;
+    color: white;
+    padding: 0.75rem;
+    font-weight: 500;
+}
+
+.download-btn:hover {
+    background-color: #8e44ad;
+}
+
+.download-btn:disabled {
+    background-color: #bdc3c7;
+    cursor: not-allowed;
+}
+
+.clear-btn {
+    background-color: #f39c12;
+    color: white;
+}
+
+.clear-btn:hover {
+    background-color: #d35400;
+}
+
+.upload-image-btn {
+    width: 100%;
+    background-color: #1abc9c;
+    color: white;
+}
+
+.upload-image-btn:hover {
+    background-color: #16a085;
+}
+
+.file-input-hidden {
+    display: none;
+}
+
+/* Signature Canvas Styles */
+.signature-pad-container {
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.canvas-container {
+    width: 100%;
+    height: 150px;
+    position: relative;
+}
+
+.signature-canvas {
+    width: 100%;
+    height: 100%;
+    background-color: white;
+}
+
+/* Text Signature Styles */
+.text-signature-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.text-signature-input {
+    padding: 0.75rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 1rem;
+    width: 100%;
+}
+
+.text-signature-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.option-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.option-label {
+    font-size: 0.9rem;
+    color: #7f8c8d;
+}
+
+.font-select {
+    padding: 0.25rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.font-size-slider {
+    flex: 1;
+}
+
+.font-size-value {
+    width: 40px;
+    text-align: center;
+    font-size: 0.9rem;
+}
+
+.color-picker {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: none;
+    background: none;
+    cursor: pointer;
+}
+
+.style-buttons {
+    display: flex;
+    gap: 0.25rem;
+}
+
+.style-btn {
+    width: 30px;
+    height: 30px;
+    border: 1px solid #ddd;
+    background: white;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+    font-style: normal;
+}
+
+.style-btn.active {
+    background-color: #3498db;
+    color: white;
+    border-color: #3498db;
+}
+
+/* Image Upload Styles */
+.image-requirements {
+    text-align: center;
+    color: #7f8c8d;
+    margin-top: 0.5rem;
+}
+
+/* Signature Actions */
+.signature-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 1rem;
+}
+
+/* Page Controls */
+.page-controls {
     display: flex;
     justify-content: center;
     align-items: center;
-    height: 100%;
-    color: #7f8c8d;
-    font-size: 1.2rem;
-}
-
-.page-controls {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+    gap: 1rem;
     margin-top: auto;
-    padding-top: 15px;
-    border-top: 1px solid #ddd;
 }
 
-/* Responsive adjustments */
-@media (max-width: 768px) {
+.page-btn {
+    padding: 0.5rem 1rem;
+    background-color: #3498db;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.page-btn:disabled {
+    background-color: #bdc3c7;
+    cursor: not-allowed;
+}
+
+.page-info {
+    font-size: 0.9rem;
+    color: #7f8c8d;
+}
+
+/* Spinner Animation */
+.spinner {
+    display: inline-block;
+    width: 1rem;
+    height: 1rem;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    border-top-color: white;
+    animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Responsive Layout */
+@media (max-width: 1024px) {
     .main-content {
         flex-direction: column;
     }
 
     .tools-panel {
-        max-width: 100%;
-        order: -1;
-        border-left: none;
-        border-bottom: 1px solid #ddd;
+        width: 100%;
     }
+}
+
+/* Add these styles to your App.css */
+
+/* Signature font styling */
+.text-signature-input {
+    font-family: 'AutoGrafPersonal', cursive;
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 15px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 24px;
+}
+
+/* Color options styling */
+.color-options {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.color-option {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.color-option.active {
+    border-color: #333;
+    transform: scale(1.1);
+}
+
+.color-picker {
+    width: 24px;
+    height: 24px;
+    border: none;
+    background: none;
+    cursor: pointer;
+    margin-left: 8px;
+}
+
+/* Font size slider */
+.font-size-slider {
+    flex-grow: 1;
+    margin: 0 10px;
+}
+
+.font-size-value {
+    width: 40px;
+    text-align: center;
+}
+
+/* Option group styling */
+.option-group {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.option-label {
+    min-width: 60px;
+    margin-right: 10px;
+    font-weight: bold;
 }

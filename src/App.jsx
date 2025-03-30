@@ -1,12 +1,15 @@
 import { useState, useRef, useEffect } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
-import { PDFDocument, rgb } from "pdf-lib";
+import { PDFDocument } from "pdf-lib";
 import SignaturePad from "signature_pad";
 import { v4 as uuidv4 } from "uuid";
 import "./App.css";
 
 // Set up PDF worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+
+// Updated signature font
+const signatureFont = "Dancing Script"; // Changed from "AutoGrafPersonal"
 
 function App() {
   const [documentFile, setDocumentFile] = useState(null);
@@ -15,9 +18,50 @@ function App() {
   const [signatureFields, setSignatureFields] = useState([]);
   const [activeField, setActiveField] = useState(null);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [textSignature, setTextSignature] = useState("");
+  const [fontSize, setFontSize] = useState(24);
+  const [fontColor, setFontColor] = useState("#000000");
+  const [signatureType, setSignatureType] = useState("draw");
+  const [error, setError] = useState(null);
+  const [fontLoaded, setFontLoaded] = useState(false);
+  const [signatureData, setSignatureData] = useState(null);
+
+  // Color options for signature
+  const colorOptions = [
+    { value: "#000000", label: "Black" },
+    { value: "#FF0000", label: "Red" },
+    { value: "#0000FF", label: "Blue" },
+    { value: "#008000", label: "Green" },
+    { value: "#800080", label: "Purple" },
+  ];
 
   const canvasRef = useRef(null);
   const signaturePadRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const fontRef = useRef(null);
+
+  // Load Google Font
+  useEffect(() => {
+    const loadFont = async () => {
+      try {
+        // Load Dancing Script from Google Fonts
+        const fontLink = document.createElement("link");
+        fontLink.href =
+          "https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400;700&display=swap";
+        fontLink.rel = "stylesheet";
+        document.head.appendChild(fontLink);
+
+        // Set a timeout to ensure the font is loaded before we use it
+        setTimeout(() => {
+          setFontLoaded(true);
+        }, 500);
+      } catch (err) {
+        console.error("Failed to load font:", err);
+      }
+    };
+
+    loadFont();
+  }, []);
 
   // Initialize Signature Pad
   useEffect(() => {
@@ -47,15 +91,27 @@ function App() {
     }
   }, []);
 
+  // Apply signature data to field when active field changes
+  useEffect(() => {
+    if (activeField && signatureData) {
+      updateSignatureField(activeField, signatureData);
+      setSignatureData(null); // Clear after applying
+    }
+  }, [activeField, signatureData]);
+
   const handleDocumentLoadSuccess = ({ numPages }) => {
     setNumPages(numPages);
+    setError(null);
   };
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
-    if (file) {
+    if (file && file.type === "application/pdf") {
       setDocumentFile(file);
       setSignatureFields([]);
+      setError(null);
+    } else {
+      setError("Please upload a valid PDF file");
     }
   };
 
@@ -68,38 +124,155 @@ function App() {
       height: 80,
       signatureData: null,
       pageNumber,
+      type: signatureType,
+      fontSize,
+      fontColor,
+      textValue: textSignature,
     };
-    setSignatureFields([...signatureFields, newField]);
+
+    setSignatureFields((prevFields) => [...prevFields, newField]);
     setActiveField(newField.id);
+
+    // If we already have signature data waiting to be applied, it will be used for this new field
+  };
+
+  const updateSignatureField = (fieldId, data) => {
+    setSignatureFields((prevFields) =>
+      prevFields.map((field) =>
+        field.id === fieldId
+          ? {
+              ...field,
+              signatureData: data,
+              type: signatureType,
+              fontSize: fontSize,
+              fontColor: fontColor,
+              textValue: textSignature,
+            }
+          : field
+      )
+    );
+  };
+
+  const captureSignature = () => {
+    let data = null;
+
+    if (
+      signatureType === "draw" &&
+      signaturePadRef.current &&
+      !signaturePadRef.current.isEmpty()
+    ) {
+      data = signaturePadRef.current.toDataURL("image/png");
+    } else if (signatureType === "text" && textSignature.trim()) {
+      const canvas = document.createElement("canvas");
+      canvas.width = 400;
+      canvas.height = 100;
+      const ctx = canvas.getContext("2d");
+
+      // Configure canvas for text rendering
+      ctx.font = `${fontSize}px ${fontLoaded ? signatureFont : "cursive"}`;
+      ctx.fillStyle = fontColor;
+      ctx.textBaseline = "middle";
+
+      const textWidth = ctx.measureText(textSignature).width;
+      if (textWidth > canvas.width) {
+        canvas.width = textWidth + 20;
+      }
+
+      // Redraw with possibly adjusted canvas
+      ctx.font = `${fontSize}px ${fontLoaded ? signatureFont : "cursive"}`;
+      ctx.fillStyle = fontColor;
+      ctx.textBaseline = "middle";
+      ctx.fillText(textSignature, 10, canvas.height / 2);
+
+      data = canvas.toDataURL("image/png");
+    }
+
+    return data;
   };
 
   const saveSignature = () => {
-    if (
-      !signaturePadRef.current ||
-      signaturePadRef.current.isEmpty() ||
-      !activeField
-    )
+    if (!activeField) {
+      setError("Please select or add a signature field first");
       return;
+    }
 
-    const signatureData = signaturePadRef.current.toDataURL("image/png");
-    setSignatureFields(
-      signatureFields.map((field) =>
-        field.id === activeField ? { ...field, signatureData } : field
-      )
-    );
-    signaturePadRef.current.clear();
+    const data = captureSignature();
+
+    if (!data) {
+      setError("Please create a signature before saving");
+      return;
+    }
+
+    // Directly update the field
+    updateSignatureField(activeField, data);
+
+    // Clear the canvas and text input
+    if (signaturePadRef.current) {
+      signaturePadRef.current.clear();
+    }
+    setTextSignature("");
+
+    setError(null);
+  };
+
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (!activeField) {
+      setError("Please select or add a signature field first");
+      return;
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      setError("Image size should be less than 2MB");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const maxWidth = 400;
+        const maxHeight = 150;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxWidth) {
+          height = (maxWidth / width) * height;
+          width = maxWidth;
+        }
+        if (height > maxHeight) {
+          width = (maxHeight / height) * width;
+          height = maxHeight;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const imageData = canvas.toDataURL("image/png");
+        updateSignatureField(activeField, imageData);
+        setError(null);
+      };
+      img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
   };
 
   const clearSignature = () => {
     if (signaturePadRef.current) {
       signaturePadRef.current.clear();
     }
+    setTextSignature("");
   };
 
   const removeActiveField = () => {
     if (!activeField) return;
-    setSignatureFields(
-      signatureFields.filter((field) => field.id !== activeField)
+    setSignatureFields((prevFields) =>
+      prevFields.filter((field) => field.id !== activeField)
     );
     setActiveField(null);
   };
@@ -110,8 +283,9 @@ function App() {
 
     const startX = e.clientX;
     const startY = e.clientY;
-    const fieldIndex = signatureFields.findIndex((f) => f.id === fieldId);
-    const field = signatureFields[fieldIndex];
+    const field = signatureFields.find((f) => f.id === fieldId);
+    if (!field) return;
+
     const startFieldX = field.x;
     const startFieldY = field.y;
 
@@ -119,13 +293,13 @@ function App() {
       const dx = e.clientX - startX;
       const dy = e.clientY - startY;
 
-      const newFields = [...signatureFields];
-      newFields[fieldIndex] = {
-        ...newFields[fieldIndex],
-        x: startFieldX + dx,
-        y: startFieldY + dy,
-      };
-      setSignatureFields(newFields);
+      setSignatureFields((prevFields) =>
+        prevFields.map((field) =>
+          field.id === fieldId
+            ? { ...field, x: startFieldX + dx, y: startFieldY + dy }
+            : field
+        )
+      );
     };
 
     const handleMouseUp = () => {
@@ -138,64 +312,70 @@ function App() {
   };
 
   const downloadSignedPdf = async () => {
-    if (!documentFile || signatureFields.length === 0) {
-      alert("Please upload a document and add signatures first");
+    if (!documentFile) {
+      setError("Please upload a PDF document first");
+      return;
+    }
+    if (signatureFields.length === 0) {
+      setError("Please add at least one signature field");
       return;
     }
 
     setIsDownloading(true);
+    setError(null);
 
     try {
-      // 1. Read the uploaded file
       const fileArrayBuffer = await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result);
-        reader.onerror = reject;
+        reader.onerror = (error) => {
+          setError("Failed to read PDF file");
+          reject(error);
+        };
         reader.readAsArrayBuffer(documentFile);
       });
 
-      // 2. Load the PDF
       const pdfDoc = await PDFDocument.load(fileArrayBuffer);
       const pages = pdfDoc.getPages();
 
-      // 3. Process each signature field
+      // For text signatures, we'll use images instead of trying to embed the font
+      // This ensures the signature appearance is preserved exactly
       for (const field of signatureFields) {
-        if (field.signatureData && field.pageNumber <= pages.length) {
-          const page = pages[field.pageNumber - 1];
-          const { width, height } = page.getSize();
+        if (!field.signatureData) continue;
+        if (field.pageNumber > pages.length) continue;
 
-          // Calculate scale factor (match display scale)
-          const displayWidth = 600; // Same as your Page width prop
-          const scale = displayWidth / width;
+        const page = pages[field.pageNumber - 1];
+        const { width, height } = page.getSize();
+        const displayWidth = 600;
+        const scale = displayWidth / width;
 
-          // Convert signature to image
-          const pngImageBytes = await fetch(field.signatureData).then((res) =>
-            res.arrayBuffer()
-          );
+        try {
+          // For all signature types, use the image data
+          const pngImageBytes = await fetch(field.signatureData).then((res) => {
+            if (!res.ok) throw new Error("Failed to fetch signature image");
+            return res.arrayBuffer();
+          });
 
-          // Embed the PNG image
           const pngImage = await pdfDoc.embedPng(pngImageBytes);
 
-          // Calculate PDF coordinates (PDF uses bottom-left origin)
           const pdfX = field.x / scale;
           const pdfY = height - field.y / scale - field.height / scale;
           const pdfWidth = field.width / scale;
           const pdfHeight = field.height / scale;
 
-          // Draw the signature on the PDF page
           page.drawImage(pngImage, {
             x: pdfX,
             y: pdfY,
             width: pdfWidth,
             height: pdfHeight,
           });
+        } catch (err) {
+          console.error("Error embedding signature:", err);
+          continue;
         }
       }
 
-      // 4. Save the modified PDF
       const pdfBytes = await pdfDoc.save();
-
-      // 5. Trigger download
       const blob = new Blob([pdfBytes], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -204,14 +384,15 @@ function App() {
       document.body.appendChild(link);
       link.click();
 
-      // Clean up
       setTimeout(() => {
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
       }, 100);
+
+      setError(null);
     } catch (error) {
       console.error("Error generating PDF:", error);
-      alert("Failed to generate signed PDF. Please try again.");
+      setError("Failed to generate signed PDF. Please try again.");
     } finally {
       setIsDownloading(false);
     }
@@ -219,19 +400,31 @@ function App() {
 
   return (
     <div className="app">
-      <header>
+      <header className="app-header">
         <h1>Document Signer</h1>
-        <input type="file" accept=".pdf" onChange={handleFileChange} />
+        <div className="file-upload-container">
+          <label className="file-upload-label">
+            <input
+              type="file"
+              accept=".pdf"
+              onChange={handleFileChange}
+              className="file-upload-input"
+            />
+            <span className="file-upload-button">Upload PDF</span>
+          </label>
+        </div>
       </header>
+
+      {error && <div className="error-message">{error}</div>}
 
       <div className="main-content">
         <div className="document-container">
-          {documentFile && (
+          {documentFile ? (
             <Document
               file={documentFile}
               onLoadSuccess={handleDocumentLoadSuccess}
-              loading="Loading PDF..."
-              error="Failed to load PDF."
+              onLoadError={() => setError("Failed to load PDF")}
+              loading={<div className="loading-pdf">Loading PDF...</div>}
             >
               <Page
                 pageNumber={pageNumber}
@@ -260,42 +453,214 @@ function App() {
                           src={field.signatureData}
                           alt="Signature"
                           className="signature-img"
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "contain",
+                          }}
                         />
                       )}
                     </div>
                   ))}
               </Page>
             </Document>
-          )}
-          {!documentFile && (
+          ) : (
             <div className="upload-prompt">
+              <div className="upload-icon">📄</div>
               <p>Upload a PDF document to begin</p>
             </div>
           )}
         </div>
 
         <div className="tools-panel">
-          <button onClick={addSignatureField} className="tool-btn">
-            Add Signature Field
-          </button>
+          <div className="signature-type-selector">
+            <h3 className="section-title">Signature Type</h3>
+            <div className="signature-type-options">
+              <label
+                className={`signature-type-option ${
+                  signatureType === "draw" ? "active" : ""
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="signatureType"
+                  value="draw"
+                  checked={signatureType === "draw"}
+                  onChange={() => setSignatureType("draw")}
+                  className="option-input"
+                />
+                <div className="option-content">
+                  <div className="option-icon">✍️</div>
+                  <span>Draw</span>
+                </div>
+              </label>
+              <label
+                className={`signature-type-option ${
+                  signatureType === "text" ? "active" : ""
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="signatureType"
+                  value="text"
+                  checked={signatureType === "text"}
+                  onChange={() => setSignatureType("text")}
+                  className="option-input"
+                />
+                <div className="option-content">
+                  <div className="option-icon">🖋️</div>
+                  <span>Text</span>
+                </div>
+              </label>
+              <label
+                className={`signature-type-option ${
+                  signatureType === "image" ? "active" : ""
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="signatureType"
+                  value="image"
+                  checked={signatureType === "image"}
+                  onChange={() => setSignatureType("image")}
+                  className="option-input"
+                />
+                <div className="option-content">
+                  <div className="option-icon">🖼️</div>
+                  <span>Image</span>
+                </div>
+              </label>
+            </div>
+          </div>
 
-          {activeField && (
-            <button onClick={removeActiveField} className="tool-btn danger">
-              Remove Field
+          <div className="field-controls">
+            <button
+              onClick={addSignatureField}
+              className="tool-btn add-field-btn"
+              disabled={!documentFile}
+            >
+              + Add Signature Field
             </button>
-          )}
 
-          <div className="signature-pad-container">
-            <canvas ref={canvasRef} className="signature-canvas"></canvas>
+            {activeField && (
+              <button
+                onClick={removeActiveField}
+                className="tool-btn remove-field-btn"
+              >
+                × Remove Field
+              </button>
+            )}
+          </div>
+
+          <div className="signature-input-container">
+            {signatureType === "draw" && (
+              <div className="signature-pad-container">
+                <div className="canvas-container">
+                  <canvas ref={canvasRef} className="signature-canvas"></canvas>
+                </div>
+              </div>
+            )}
+
+            {signatureType === "text" && (
+              <div className="text-signature-container">
+                <input
+                  type="text"
+                  value={textSignature}
+                  onChange={(e) => setTextSignature(e.target.value)}
+                  placeholder="Enter your signature text"
+                  className="text-signature-input"
+                  style={{
+                    fontFamily: fontLoaded ? signatureFont : "cursive",
+                    fontSize: `${fontSize}px`,
+                    color: fontColor,
+                  }}
+                />
+                <div className="text-signature-options">
+                  <div className="option-group">
+                    <label className="option-label">Size:</label>
+                    <input
+                      type="range"
+                      min="12"
+                      max="48"
+                      value={fontSize}
+                      onChange={(e) => setFontSize(parseInt(e.target.value))}
+                      className="font-size-slider"
+                    />
+                    <span className="font-size-value">{fontSize}px</span>
+                  </div>
+                  <div className="option-group">
+                    <label className="option-label">Color:</label>
+                    <div className="color-options">
+                      {colorOptions.map((color) => (
+                        <button
+                          key={color.value}
+                          className={`color-option ${
+                            fontColor === color.value ? "active" : ""
+                          }`}
+                          style={{ backgroundColor: color.value }}
+                          onClick={() => setFontColor(color.value)}
+                          title={color.label}
+                        />
+                      ))}
+                      <input
+                        type="color"
+                        value={fontColor}
+                        onChange={(e) => setFontColor(e.target.value)}
+                        className="color-picker"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {signatureType === "image" && (
+              <div className="image-signature-container">
+                <button
+                  onClick={() => fileInputRef.current.click()}
+                  className="tool-btn upload-image-btn"
+                >
+                  Upload Signature Image
+                </button>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleImageUpload}
+                  accept="image/*"
+                  className="file-input-hidden"
+                />
+                <div className="image-requirements">
+                  <small>PNG, JPG (Max 2MB)</small>
+                </div>
+              </div>
+            )}
+
             <div className="signature-actions">
-              <button onClick={clearSignature} className="tool-btn">
+              <button onClick={clearSignature} className="tool-btn clear-btn">
                 Clear
               </button>
-              <button onClick={saveSignature} className="tool-btn primary">
+              <button
+                onClick={saveSignature}
+                className="tool-btn save-btn"
+                disabled={
+                  !activeField ||
+                  (signatureType === "draw" &&
+                    (!signaturePadRef.current ||
+                      signaturePadRef.current.isEmpty())) ||
+                  (signatureType === "text" && !textSignature.trim())
+                }
+              >
                 Save Signature
               </button>
             </div>
           </div>
+
+          {activeField && (
+            <div className="active-field-info">
+              <p>Selected field ID: {activeField}</p>
+              <p>Signature will be applied to this field when saved</p>
+            </div>
+          )}
 
           <button
             onClick={downloadSignedPdf}
@@ -304,18 +669,25 @@ function App() {
               !documentFile || signatureFields.length === 0 || isDownloading
             }
           >
-            {isDownloading ? "Downloading..." : "Download Signed PDF"}
+            {isDownloading ? (
+              <>
+                <span className="spinner"></span>
+                Downloading...
+              </>
+            ) : (
+              "Download Signed PDF"
+            )}
           </button>
-
           {numPages && (
             <div className="page-controls">
               <button
                 onClick={() => setPageNumber(Math.max(1, pageNumber - 1))}
                 disabled={pageNumber <= 1}
+                className="page-btn"
               >
                 Previous
               </button>
-              <span>
+              <span className="page-info">
                 Page {pageNumber} of {numPages}
               </span>
               <button
@@ -323,6 +695,7 @@ function App() {
                   setPageNumber(Math.min(numPages, pageNumber + 1))
                 }
                 disabled={pageNumber >= numPages}
+                className="page-btn"
               >
                 Next
               </button>
