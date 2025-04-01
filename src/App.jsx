@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import * as mammoth from "mammoth";
 import { v4 as uuidv4 } from "uuid";
 import { saveAs } from "file-saver";
@@ -156,7 +156,170 @@ function App() {
     setNumPages(numPages);
     setError(null);
   };
+  const enhanceDocxDisplay = async (docxContent) => {
+    try {
+      // Create styled paragraphs for better DOCX display
+      const styledContent = docxContent.map((para, index) => {
+        // Try to detect headings and apply appropriate styling
+        const isHeading =
+          para.trim().length < 50 &&
+          (para.trim().endsWith(":") ||
+            !para.includes(".") ||
+            para.toUpperCase() === para);
 
+        // Return formatted paragraph with appropriate styling
+        return {
+          text: para,
+          isHeading,
+          style: isHeading ? "heading" : "normal",
+          id: `para-${index}`,
+        };
+      });
+
+      setDocxContent(styledContent);
+    } catch (err) {
+      console.error("Error enhancing DOCX display:", err);
+      // If enhancement fails, just use the plain content
+      setDocxContent(
+        docxContent.map((para) => ({
+          text: para,
+          style: "normal",
+        }))
+      );
+    }
+  };
+
+  // Add this function to provide a more robust DOCX handling strategy
+  const handleDocxDocument = async (file) => {
+    try {
+      setIsConverting(true);
+
+      // First try to parse the DOCX using mammoth
+      const docxContent = await parseDocx(file);
+
+      // Try PDF conversion first
+      try {
+        const pdfFile = await convertDocxToPdf(file, docxContent);
+        if (pdfFile) {
+          console.log("Successfully converted DOCX to PDF");
+          setDocumentFile(pdfFile);
+          setDocumentType("pdf");
+          return;
+        }
+      } catch (conversionError) {
+        console.error("PDF conversion failed:", conversionError);
+        // Continue to fallback if conversion fails
+      }
+
+      // Fallback to improved DOCX rendering
+      console.log("Using enhanced DOCX fallback display");
+      setDocumentFile(file);
+      setDocumentType("docx");
+
+      // Enhance DOCX display with better formatting
+      await enhanceDocxDisplay(docxContent);
+    } catch (err) {
+      console.error("DOCX processing error:", err);
+      setError(`Failed to process Word document: ${err.message}`);
+
+      // Ultimate fallback - basic text display
+      setDocumentFile(file);
+      setDocumentType("docx");
+    } finally {
+      setIsConverting(false);
+    }
+  };
+
+  // Improved conversion function with better error handling
+  const convertDocxToPdf = async (file, docxContent = null) => {
+    try {
+      // If docxContent wasn't provided, extract it
+      if (!docxContent) {
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await mammoth.extractRawText({ arrayBuffer });
+        docxContent = result.value.split("\n").filter((p) => p.trim());
+      }
+
+      // Join content for PDF creation
+      const fullText = Array.isArray(docxContent)
+        ? docxContent.join("\n\n")
+        : docxContent;
+
+      // Create PDF with more robust error handling
+      const pdfDoc = await PDFDocument.create();
+
+      // Use a try-catch for font embedding in case it fails
+      let font;
+      try {
+        font = await pdfDoc.embedFont(StandardFonts.TimesRoman);
+      } catch (fontError) {
+        console.warn(
+          "Failed to embed Times Roman, using default font:",
+          fontError
+        );
+        font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      }
+
+      // Safety checks
+      if (!fullText || fullText.length === 0) {
+        throw new Error("No content found in document");
+      }
+
+      // Create pages with content
+      const textChunks = chunkText(fullText, 2500); // Smaller chunks for more reliability
+
+      // Add all pages
+      for (const chunk of textChunks) {
+        const page = pdfDoc.addPage([612, 792]); // Standard US Letter size
+        const { width, height } = page.getSize();
+
+        // Draw text with safe margins
+        const margin = 72; // 1 inch margins
+        page.drawText(chunk, {
+          x: margin,
+          y: height - margin,
+          size: 11,
+          font: font,
+          maxWidth: width - margin * 2,
+          lineHeight: 14,
+        });
+      }
+
+      const pdfBytes = await pdfDoc.save();
+      const pdfBlob = new Blob([pdfBytes], { type: "application/pdf" });
+      return new File([pdfBlob], `${file.name.replace(/\.[^/.]+$/, "")}.pdf`, {
+        type: "application/pdf",
+      });
+    } catch (err) {
+      console.error("Error in PDF conversion:", err);
+      // Pass the error up to be handled by the calling function
+      throw err;
+    }
+  };
+
+  // Helper function to chunk text for PDF pages
+  const chunkText = (text, chunkSize) => {
+    const chunks = [];
+    let currentChunk = "";
+    const paragraphs = text.split("\n");
+
+    for (const paragraph of paragraphs) {
+      if (currentChunk.length + paragraph.length > chunkSize) {
+        chunks.push(currentChunk);
+        currentChunk = paragraph;
+      } else {
+        currentChunk += (currentChunk ? "\n" : "") + paragraph;
+      }
+    }
+
+    if (currentChunk) {
+      chunks.push(currentChunk);
+    }
+
+    return chunks;
+  };
+
+  // Update your handleFileChange function to use the improved handler
   const handleFileChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -176,9 +339,8 @@ function App() {
         setDocumentFile(file);
         setDocumentType("pdf");
       } else if (validatedType === "docx") {
-        setDocumentFile(file);
-        setDocumentType("docx");
-        await parseDocx(file);
+        // Use the improved DOCX handler
+        await handleDocxDocument(file);
       } else if (validatedType === "image") {
         setDocumentFile(file);
         setDocumentType("image");
@@ -643,8 +805,11 @@ function App() {
               <div className="docx-preview">
                 {docxContent.length > 0 ? (
                   docxContent.map((para, index) => (
-                    <p key={index} className="docx-paragraph">
-                      {para}
+                    <p
+                      key={para.id || index}
+                      className={`docx-paragraph ${para.style || "normal"}`}
+                    >
+                      {para.text || para}
                     </p>
                   ))
                 ) : (
