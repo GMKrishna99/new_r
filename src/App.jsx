@@ -522,86 +522,90 @@ function App() {
 
     try {
       const arrayBuffer = await originalFile.arrayBuffer();
-      const { value } = await mammoth.extractRawText({ arrayBuffer });
-
-      // Process signature images
-      const signatureParagraphs = await Promise.all(
-        signatureFields.map(async (field) => {
-          if (!field.signatureData) return null;
-          const imageData = await getImageData(field.signatureData);
-          return new Paragraph({
-            children: [
-              new ImageRun({
-                data: imageData,
-                transformation: {
-                  width: field.width,
-                  height: field.height,
-                },
-              }),
-              new TextRun({
-                text: " ",
-              }),
-            ],
-          });
-        })
-      );
-
-      // Filter out null entries
-      const validSignatures = signatureParagraphs.filter((p) => p !== null);
 
       const doc = new DocxDocument({
         creator: "Document Signer App",
-        title: "Signed Document",
         description: "Document with digital signatures",
+        styles: {
+          paragraphStyles: [
+            {
+              id: "Normal",
+              name: "Normal",
+              run: {
+                size: 24,
+              },
+              paragraph: {
+                spacing: { line: 276 },
+              },
+            },
+          ],
+        },
         sections: [
           {
             properties: {},
             children: [
+              // Original content
+              ...(await mammoth.extractRawText({ arrayBuffer }).then((result) =>
+                result.value
+                  .split("\n")
+                  .filter((p) => p.trim())
+                  .map(
+                    (para) =>
+                      new Paragraph({
+                        children: [new TextRun(para)],
+                        spacing: { line: 300 },
+                      })
+                  )
+              )),
+
+              // Signature section
               new Paragraph({
-                heading: HeadingLevel.HEADING_1,
-                children: [
-                  new TextRun({
-                    text: "Signed Document",
-                    bold: true,
-                  }),
-                ],
+                children: [new TextRun("")],
               }),
+
               new Paragraph({
-                children: [
-                  new TextRun({
-                    text: "This document contains the following digital signatures:",
-                    bold: true,
-                  }),
-                ],
-              }),
-              ...validSignatures,
-              new Paragraph({
+                text: "Signatures:",
                 heading: HeadingLevel.HEADING_2,
-                children: [
-                  new TextRun({
-                    text: "Original Content:",
-                    bold: true,
-                  }),
-                ],
               }),
-              new Paragraph({
-                children: [
-                  new TextRun({
-                    text: value,
-                  }),
-                ],
-              }),
+
+              // Signature images
+              ...(
+                await Promise.all(
+                  signatureFields.map(async (field) => {
+                    if (!field.signatureData) return null;
+
+                    try {
+                      const imageData = await getImageData(field.signatureData);
+                      const media = Media.addImage(
+                        doc,
+                        imageData,
+                        field.width,
+                        field.height
+                      );
+
+                      return new Paragraph({
+                        children: [media],
+                        spacing: { line: 200 }, // Changed from spacing: { after: 200 }
+                      });
+                    } catch (err) {
+                      console.error("Error adding signature:", err);
+                      return null;
+                    }
+                  })
+                )
+              ).filter(Boolean),
             ],
           },
         ],
       });
 
-      // Generate blob with proper MIME type
-      const blob = await Packer.toBlob(doc);
-      return blob;
+      const buffer = await Packer.toBuffer(doc);
+      return new Blob([buffer], {
+        type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      });
     } catch (err) {
       console.error("Error creating signed DOCX:", err);
-      throw err;
+      throw new Error("Failed to create valid Word document");
     }
   };
   const downloadSignedDocument = async () => {
@@ -618,18 +622,72 @@ function App() {
     setError(null);
 
     try {
+      // Create a new PDF document
+      const pdfDoc = await PDFDocument.create();
+
+      // Handle different document types
       if (documentType === "pdf") {
-        const fileArrayBuffer = await documentFile.arrayBuffer();
-        const pdfDoc = await PDFDocument.load(fileArrayBuffer);
-        const pages = pdfDoc.getPages();
+        // For PDFs, copy the existing pages
+        const existingPdfBytes = await documentFile.arrayBuffer();
+        const existingPdf = await PDFDocument.load(existingPdfBytes);
+        const pages = await pdfDoc.copyPages(
+          existingPdf,
+          existingPdf.getPageIndices()
+        );
+        pages.forEach((page) => pdfDoc.addPage(page));
+      } else if (documentType === "docx") {
+        // For DOCX, convert to PDF text
+        const text = await parseDocx(originalFile);
+        const fullText = Array.isArray(text) ? text.join("\n\n") : text;
+        const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+        // Add pages with content
+        const textChunks = chunkText(fullText, 2500);
+        for (const chunk of textChunks) {
+          const page = pdfDoc.addPage([612, 792]);
+          const { width, height } = page.getSize();
+          const margin = 72;
+          page.drawText(chunk, {
+            x: margin,
+            y: height - margin,
+            size: 11,
+            font: font,
+            maxWidth: width - margin * 2,
+            lineHeight: 14,
+          });
+        }
+      } else if (documentType === "image") {
+        // For images, embed them in PDF
+        const imageBytes = await documentFile.arrayBuffer();
+        let image;
+
+        if (
+          documentFile.type === "image/jpeg" ||
+          documentFile.name.endsWith(".jpg") ||
+          documentFile.name.endsWith(".jpeg")
+        ) {
+          image = await pdfDoc.embedJpg(imageBytes);
+        } else {
+          image = await pdfDoc.embedPng(imageBytes);
+        }
+
+        const page = pdfDoc.addPage([image.width, image.height]);
+        page.drawImage(image, {
+          x: 0,
+          y: 0,
+          width: image.width,
+          height: image.height,
+        });
+      }
+
+      // Add signatures to all pages (for simplicity, we'll put them on the first page)
+      const pages = pdfDoc.getPages();
+      if (pages.length > 0) {
+        const firstPage = pages[0];
+        const { width, height } = firstPage.getSize();
 
         for (const field of signatureFields) {
-          if (!field.signatureData || field.pageNumber > pages.length) continue;
-
-          const page = pages[field.pageNumber - 1];
-          const { width, height } = page.getSize();
-          const displayWidth = 600;
-          const scale = displayWidth / width;
+          if (!field.signatureData) continue;
 
           try {
             const pngImageBytes = await fetch(field.signatureData).then((res) =>
@@ -637,12 +695,14 @@ function App() {
             );
             const pngImage = await pdfDoc.embedPng(pngImageBytes);
 
-            const pdfX = field.x / scale;
-            const pdfY = height - field.y / scale - field.height / scale;
-            const pdfWidth = field.width / scale;
-            const pdfHeight = field.height / scale;
+            // Scale coordinates to PDF size (assuming original display was 600px wide)
+            const scale = width / 600;
+            const pdfX = field.x * scale;
+            const pdfY = height - field.y * scale - field.height * scale;
+            const pdfWidth = field.width * scale;
+            const pdfHeight = field.height * scale;
 
-            page.drawImage(pngImage, {
+            firstPage.drawImage(pngImage, {
               x: pdfX,
               y: pdfY,
               width: pdfWidth,
@@ -652,73 +712,14 @@ function App() {
             console.error("Error embedding signature:", err);
           }
         }
-
-        const pdfBytes = await pdfDoc.save();
-        saveAs(
-          new Blob([pdfBytes], { type: "application/pdf" }),
-          `signed-${originalFile.name}`
-        );
-      } else if (documentType === "docx") {
-        const signedDocx = await createSignedDocx();
-        saveAs(signedDocx, `signed-${originalFile.name}`);
-      } else if (documentType === "image") {
-        const signaturePromises = signatureFields.map((field) => {
-          return new Promise((resolve) => {
-            if (!field.signatureData) return resolve(null);
-
-            const img = new Image();
-            img.onload = () => resolve({ img, field });
-            img.onerror = () => {
-              console.error("Failed to load signature image");
-              resolve(null);
-            };
-            img.src = field.signatureData;
-          });
-        });
-
-        const loadedSignatures = (await Promise.all(signaturePromises)).filter(
-          Boolean
-        );
-
-        const mainImg = new Image();
-        mainImg.src = URL.createObjectURL(documentFile);
-
-        await new Promise((resolve) => {
-          mainImg.onload = resolve;
-          mainImg.onerror = () => {
-            setError("Failed to load main image");
-            resolve();
-          };
-        });
-
-        const canvas = document.createElement("canvas");
-        canvas.width = mainImg.width;
-        canvas.height = mainImg.height;
-        const ctx = canvas.getContext("2d");
-
-        ctx.drawImage(mainImg, 0, 0);
-
-        loadedSignatures.forEach(({ img, field }) => {
-          const x = field.x * (mainImg.width / 600);
-          const y = field.y * (mainImg.height / 800);
-          const width = field.width * (mainImg.width / 600);
-          const height = field.height * (mainImg.height / 800);
-
-          ctx.drawImage(img, x, y, width, height);
-        });
-
-        const fileExt = originalFile.name.split(".").pop().toLowerCase();
-        let mimeType = "image/png";
-        if (fileExt === "jpg" || fileExt === "jpeg") mimeType = "image/jpeg";
-
-        canvas.toBlob((blob) => {
-          if (!blob) {
-            setError("Failed to create signed image");
-            return;
-          }
-          saveAs(blob, `signed-${originalFile.name}`);
-        }, mimeType);
       }
+
+      // Save and download the PDF
+      const pdfBytes = await pdfDoc.save();
+      saveAs(
+        new Blob([pdfBytes], { type: "application/pdf" }),
+        `signed-${originalFile.name.replace(/\.[^/.]+$/, "")}.pdf`
+      );
     } catch (error) {
       console.error("Error generating document:", error);
       setError(`Failed to generate signed document: ${error.message}`);

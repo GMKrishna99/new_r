@@ -583,3 +583,101 @@ body {
     max-width: 800px;
     margin: 0 auto;
 }
+
+/* DOCX Document Styling */
+.docx-content {
+    padding: 20px;
+    background: white;
+    line-height: 1.5;
+    font-family: 'Calibri', 'Arial', sans-serif;
+    color: #333;
+    width: 100%;
+    min-height: 842px;
+    /* A4 height in px */
+    max-width: 100%;
+    margin: 0 auto;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24);
+}
+
+.docx-heading {
+    margin-top: 16px;
+    margin-bottom: 12px;
+    font-weight: bold;
+    color: #2c3e50;
+}
+
+.heading-level-1 {
+    font-size: 24px;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 5px;
+}
+
+.heading-level-2 {
+    font-size: 20px;
+}
+
+.heading-level-3 {
+    font-size: 18px;
+}
+
+.docx-paragraph {
+    margin-bottom: 12px;
+    text-align: justify;
+}
+
+.docx-list-item {
+    margin-bottom: 8px;
+    padding-left: 20px;
+    position: relative;
+}
+
+.docx-list-item::before {
+    content: "•";
+    position: absolute;
+    left: 5px;
+}
+
+.docx-image-container {
+    margin: 15px 0;
+    text-align: center;
+}
+
+.docx-image {
+    max-width: 100%;
+    height: auto;
+    border: 1px solid #eee;
+}
+
+/* Bold and italic text that might be in the document */
+.docx-content strong,
+.docx-content b {
+    font-weight: bold;
+}
+
+.docx-content em,
+.docx-content i {
+    font-style: italic;
+}
+
+/* Table styling if your document has tables */
+.docx-content table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 15px 0;
+}
+
+.docx-content table,
+.docx-content th,
+.docx-content td {
+    border: 1px solid #ddd;
+}
+
+.docx-content th,
+.docx-content td {
+    padding: 8px;
+    text-align: left;
+}
+
+.docx-content th {
+    background-color: #f2f2f2;
+}
